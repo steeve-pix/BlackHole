@@ -10,6 +10,18 @@
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
+float lastX = SCR_WIDTH / 2.0f;
+float lastY = SCR_HEIGHT / 2.0f;
+float yaw = -90.0f;
+float pitch = 0.0f;
+bool firstMouse = true;
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+
+void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+
+void processInput(GLFWwindow *window);
+
 // Shader loading helper
 std::string loadShaderSource(const char *path);
 
@@ -17,9 +29,6 @@ unsigned int compileShader(const char *source, GLenum type);
 
 unsigned int createShaderProgram(const char *vertexPath, const char *fragmentPath);
 
-void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-
-void processInput(GLFWwindow *window);
 
 int main() {
     if (!glfwInit()) {
@@ -34,7 +43,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT,GL_TRUE);
 #endif
 
-    GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "BlackHole Renderer", NULL,NULL);
+    GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "BlackHole Renderer", nullptr, nullptr);
     if (window == nullptr) {
         std::cerr << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -53,12 +62,7 @@ int main() {
     unsigned int shaderProgram = createShaderProgram("shaders/vertex.glsl", "shaders/fragment.glsl");
 
     // Fullscreen quad vertices
-    float vertices[] = {
-        -1.0f, -1.0f, 0.0f,
-        1.0f, -1.0f, 0.0f,
-        -1.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f
-    };
+    float vertices[] = {-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0};
 
     unsigned int VAO, VBO;
     glGenVertexArrays(1, &VAO);
@@ -81,9 +85,14 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT);
 
+        auto time = static_cast<float>(glfwGetTime());
+
         // Update uniforms
         glUniform2f(glGetUniformLocation(shaderProgram, "u_resolution"), SCR_WIDTH, SCR_HEIGHT);
-        glUniform1f(glGetUniformLocation(shaderProgram, "u_time"), static_cast<float>(glfwGetTime()));
+        glUniform1f(glGetUniformLocation(shaderProgram, "u_time"), time);
+        glUniform1f(glGetUniformLocation(shaderProgram, "u_yaw"), yaw);
+        glUniform1f(glGetUniformLocation(shaderProgram, "u_pitch"), pitch);
+
 
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -94,6 +103,34 @@ int main() {
 
     glfwTerminate();
     return 0;
+}
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
+    glViewport(0, 0, width, height);
+}
+
+void processInput(GLFWwindow *window) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+}
+
+void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos;
+    lastX = xpos;
+    lastY = ypos;
+
+    const float sensitivity = 0.07f;
+    yaw += xoffset * sensitivity;
+    pitch += yoffset * sensitivity;
+
+    if (pitch > 89.0f) pitch = 89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
 }
 
 std::string loadShaderSource(const char *path) {
@@ -135,14 +172,4 @@ unsigned int createShaderProgram(const char *vertexPath, const char *fragmentPat
     glAttachShader(program, fragment);
     glLinkProgram(program);
     return program;
-}
-
-
-void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
-    glViewport(0, 0, width, height);
-}
-
-void processInput(GLFWwindow *window) {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
 }
