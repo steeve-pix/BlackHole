@@ -24,3 +24,10 @@ file(GLOB_RECURSE SRC_FILES "src/*.cpp")
 add_executable(BlackHole ${SRC_FILES})
 
 target_link_libraries(BlackHole PRIVATE glfw glad)
+
+# Copy shaders to build directory
+add_custom_command(TARGET BlackHole POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/shaders"
+        "$<TARGET_FILE_DIR:BlackHole>/shaders"
+        COMMENT "Copying shaders to output directory")
