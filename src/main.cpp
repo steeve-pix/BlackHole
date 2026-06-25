@@ -52,6 +52,8 @@ int main() {
 
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
         std::cerr << "Failed to init GLAD" << std::endl;
@@ -92,6 +94,7 @@ int main() {
         glUniform1f(glGetUniformLocation(shaderProgram, "u_time"), time);
         glUniform1f(glGetUniformLocation(shaderProgram, "u_yaw"), yaw);
         glUniform1f(glGetUniformLocation(shaderProgram, "u_pitch"), pitch);
+        glUniform1f(glGetUniformLocation(shaderProgram, "u_zoom"), 7.5f);
 
 
         glBindVertexArray(VAO);
@@ -112,6 +115,19 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    // Camera controls
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        yaw = -90.0f;
+        pitch = 0.0f;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        // zoom in will be handled in shader
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        // zoom out
+    }
 }
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
