@@ -96,7 +96,7 @@ int main() {
         glUniform1f(glGetUniformLocation(shaderProgram, "u_time"), time);
         glUniform1f(glGetUniformLocation(shaderProgram, "u_yaw"), yaw);
         glUniform1f(glGetUniformLocation(shaderProgram, "u_pitch"), pitch);
-        glUniform1f(glGetUniformLocation(shaderProgram, "u_zoom"), 7.5f);
+        glUniform1f(glGetUniformLocation(shaderProgram, "u_zoom"), zoom);
 
 
         glBindVertexArray(VAO);
