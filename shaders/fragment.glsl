@@ -24,7 +24,7 @@ float noise(vec2 p) {
 
 float fbm(vec2 p) {
     float v = 0.0, a = 0.5;
-    for(int i = 0; i < 5; i++) { // Slightly reduced iterations for performance
+    for(int i = 0; i < 5; i++) { // reduced iterations for performance
         v += a * noise(p);
         p *= 2.02;
         a *= 0.5;

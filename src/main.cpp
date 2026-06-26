@@ -61,7 +61,7 @@ int main() {
     }
 
     // Create shader program
-    unsigned int shaderProgram = createShaderProgram("shaders/vertex.glsl", "shaders/fragment.glsl");
+    const unsigned int shaderProgram = createShaderProgram("shaders/vertex.glsl", "shaders/fragment.glsl");
 
     // Fullscreen quad vertices
     float vertices[] = {-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0};
@@ -87,7 +87,7 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        auto time = static_cast<float>(glfwGetTime());
+        const auto time = static_cast<float>(glfwGetTime());
 
         // Update uniforms
         glUniform2f(glGetUniformLocation(shaderProgram, "u_resolution"), SCR_WIDTH, SCR_HEIGHT);
@@ -132,14 +132,14 @@ void processInput(GLFWwindow *window) {
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
     if (firstMouse) {
-        lastX = xpos;
-        lastY = ypos;
+        lastX = static_cast<float>(xpos);
+        lastY = static_cast<float>(ypos);
         firstMouse = false;
     }
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
-    lastX = xpos;
-    lastY = ypos;
+    float xoffset = static_cast<float>(xpos) - lastX;
+    float yoffset = lastY - static_cast<float>(ypos);
+    lastX = static_cast<float>(xpos);
+    lastY = static_cast<float>(ypos);
 
     const float sensitivity = 0.07f;
     yaw += xoffset * sensitivity;
