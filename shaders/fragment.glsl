@@ -5,6 +5,7 @@ uniform vec2 u_resolution;
 uniform float u_time;
 uniform float u_yaw;
 uniform float u_pitch;
+uniform float u_zoom;
 
 const int MAX_STEPS = 250;
 const float BH_RADIUS = 1.0;
@@ -58,7 +59,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
 
     // Camera setup
-    float camDist = 7.5;
+    float camDist = u_zoom;
     float cy = radians(u_yaw);
     float cp = radians(u_pitch);
     vec3 ro = vec3(camDist * cos(cp) * sin(cy), camDist * sin(cp) * 0.8, camDist * cos(cp) * cos(cy));

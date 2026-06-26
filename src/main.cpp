@@ -15,6 +15,8 @@ float lastY = SCR_HEIGHT / 2.0f;
 float yaw = -90.0f;
 float pitch = 0.0f;
 bool firstMouse = true;
+float zoom = 7.5f;
+bool autoRotate = true;
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
@@ -120,14 +122,19 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
         yaw = -90.0f;
         pitch = 0.0f;
+        zoom = 7.5f;
     }
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        // zoom in will be handled in shader
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        // Toggle auto rotate
+        autoRotate = !autoRotate;
     }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        // zoom out
-    }
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) zoom -= 0.08f;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) zoom += 0.08f;
+
+    if (zoom < 3.0f) zoom = 3.0f;
+    if (zoom > 20.0f) zoom = 20.0f;
 }
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
