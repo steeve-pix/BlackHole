@@ -15,7 +15,7 @@ float lastY = SCR_HEIGHT / 2.0f;
 float yaw = -90.0f;
 float pitch = 0.0f;
 bool firstMouse = true;
-float zoom = 14.0f;
+float zoom = 9.0f;
 bool autoRotate = true;
 float autoRotateSpeed = 0.3f;
 
