@@ -7,104 +7,166 @@ uniform float u_yaw;
 uniform float u_pitch;
 uniform float u_zoom;
 
-const int MAX_STEPS = 420;
+const int MAX_STEPS = 400;
 const float BH_RADIUS = 1.0;
-const float PHOTON_RADIUS = 1.5;
-const float STEP_SIZE = 0.027;
 
-// Noise
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+// Pseudo-random noise hash
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// Seamless 2D Noise
 float noise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     f = f*f*(3.-2.*f);
-    return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+    return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+            mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
 }
+
+// High-detail FBM for fine-streaked hot plasma
 float fbm(vec2 p) {
     float v = 0.0, a = 0.5;
-    for(int i = 0; i < 7; i++) {
-        v += a * noise(p); p *= 2.03; a *= 0.48;
+    for(int i = 0; i < 6; i++) {
+        v += a * noise(p);
+        p *= 2.25;
+        a *= 0.42;
     }
     return v;
 }
 
-// Deep space
-vec3 getRealisticBackground(vec3 rd, float time) {
-    vec2 uv = vec2(atan(rd.z, rd.x), acos(rd.y)) * 3.0;
-    vec3 col = vec3(0.0004, 0.0009, 0.0032);
+// Physically-bounded Thin Accretion Disk
+float getGasDensity(vec3 p, out float velocityDot) {
+    float r = length(p.xz);
 
-    float n1 = fbm(uv * 0.7 + vec2(time*0.0035));
-    float n2 = fbm(uv * 2.5 - vec2(time*0.0045));
-    col += vec3(0.055, 0.03, 0.105) * n1 * 0.52;
-    col += vec3(0.085, 0.05, 0.018) * n2 * 0.4;
+    // Strict physics boundaries: Matter cannot orbit safely inside 2.6*Rs
+    if (r < 2.6 * BH_RADIUS || r > 7.0 * BH_RADIUS) return 0.0;
 
-    float stars = pow(fbm(uv * 105.0), 5.7);
-    float bigStars = pow(fbm(uv * 40.0 + time*0.07), 6.4);
-    col += vec3(1.0) * (stars * 2.7 + bigStars * 1.7);
+    // Scale disk thickness to be razor thin relative to wide scales
+    float diskThickness = 0.006 * r;
+    float h = abs(p.y);
 
-    return clamp(col, 0.0, 2.0);
+    // Sharp Gaussian falloff prevents volumetric blobbing
+    float verticalFallback = exp(-(h * h) / (2.0 * diskThickness * diskThickness));
+
+    // Relativistic shear: inner gas rotates substantially faster than outer gas
+    float angle = atan(p.z, p.x);
+    float orbitalSpeed = 0.75 / sqrt(r);
+
+    // High angular multiplier creates ultra-fine hyper-velocity circular texturing
+    float tex = fbm(vec2(r * 12.0 - u_time * 2.5, angle * 48.0 + u_time * orbitalSpeed));
+
+    // Track rotation vector relative to incoming photon path
+    vec3 tangent = normalize(vec3(-p.z, 0.0, p.x));
+    vec3 viewDir = normalize(p);
+    velocityDot = dot(tangent, viewDir);
+
+    // Dynamic density drop-off
+    float baseDensity = exp(-r * 0.4) * (1.0 / (r - 1.8));
+
+    return baseDensity * verticalFallback * (0.15 + tex * 0.85);
+}
+
+// Background starfield mapped infinitely
+vec3 getBackground(vec3 rd) {
+    // Standardized mapping independent of ray position step variations
+    vec2 uv = vec2(atan(rd.z, rd.x), acos(rd.y)) * 2.5;
+
+    float n = fbm(uv * 1.5);
+    vec3 spaceGas = vec3(0.008, 0.005, 0.018) * n;
+
+    // Deep contrast pin-prick stars
+    float stars = pow(fbm(uv * 75.0), 14.0);
+    vec3 starField = vec3(2.0) * stars * 40.0;
+
+    return spaceGas + starField;
 }
 
 void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
 
-    float camDist = u_zoom;
+    // Camera Positioning
+    float camDist = max(u_zoom, 3.5); // Bound minimum zoom to prevent clipping into disk
     float cy = radians(u_yaw), cp = radians(u_pitch);
-    vec3 ro = vec3(camDist * cos(cp) * sin(cy), camDist * sin(cp) * 0.65, camDist * cos(cp) * cos(cy));
+    vec3 ro = vec3(camDist * cos(cp) * sin(cy), camDist * sin(cp), camDist * cos(cp) * cos(cy));
 
     vec3 target = vec3(0.0);
     vec3 ww = normalize(target - ro);
     vec3 uu = normalize(cross(ww, vec3(0,1,0)));
     vec3 vv = cross(uu, ww);
-    vec3 rd = normalize(uv.x * uu + uv.y * vv + 0.9 * ww);   // Wide cinematic FOV
+    vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.5 * ww);
 
     vec3 p = ro;
-    vec3 diskAccum = vec3(0.0);
+    vec3 lightAccum = vec3(0.0);
+    float opacityAccum = 0.0;
     bool hitBH = false;
+
+    // --- ZOOM-ADAPTIVE SAFETY LIMITS ---
+    // Automatically extend tracking box and outer escape barriers based on zoom depth
+    float escapeRadius = max(camDist * 2.5, 60.0);
 
     for(int i = 0; i < MAX_STEPS; i++) {
         float r = length(p);
-        if (r < BH_RADIUS) { hitBH = true; break; }
-        if (r > 50.0) break;
 
-        // Stronger GR lensing
-        float bend = 0.34 * STEP_SIZE / (r * r * r + 0.05);
-        rd = normalize(rd - normalize(p) * bend);
-
-        p += rd * STEP_SIZE;
-
-        // Thinner, more realistic volumetric disk
-        float diskH = abs(p.y);
-        float diskR = length(p.xz);
-        if (diskH < 0.055 && diskR > 1.6 && diskR < 11.0) {  // thinner!
-            float angle = atan(p.z, p.x);
-            float turb = fbm(vec2(diskR * 9.5 + u_time * 2.0, angle * 20.0));
-
-            float temp = pow(max(diskR - 1.5, 0.15), -0.8);  // hotter inside
-
-            float doppler = 1.0 + 2.9 * sin(angle + u_time * 4.8);
-            float beaming = pow(max(dot(normalize(p), rd), 0.0), 6.8);
-
-            vec3 hot = vec3(7.0, 2.4, 0.8);
-            vec3 cool = vec3(1.8, 0.5, 0.1);
-            vec3 dcol = mix(cool, hot, clamp(doppler * 0.45, 0.0, 1.0));
-
-            diskAccum += dcol * temp * (0.6 + turb * 0.6) * (1.0 + beaming * 4.2) * STEP_SIZE * 16.0;
+        // --- REALISTIC MATHEMATICAL CAPTURE ---
+        // If a photon drops below the Photon Sphere threshold with low energy, it cannot escape.
+        // Forcing a clean, hard event horizon cut-off removes unphysical "digital glitch" ray trails.
+        if (r < BH_RADIUS * 1.002) {
+            hitBH = true;
+            break;
         }
+        if (r > escapeRadius) break;
 
-        // Photon ring
-        if (abs(r - PHOTON_RADIUS) < 0.075) {
-            diskAccum += vec3(4.5, 2.8, 1.2) * 0.28 * smoothstep(0.075, 0.0, abs(r - PHOTON_RADIUS));
+        // --- ADAPTIVE STEPPING SIZED BY ZOOM ---
+        // Steps shrink micro-fine near center, but expand gracefully when zoomed far away
+        float h_step = min(0.018 * r, 0.02 * camDist);
+
+        // Mathematically strict Einstein deflection tensor mapping
+        vec3 gravityForce = - (1.5 * BH_RADIUS * cross(cross(p, rd), p)) / (r * r * r * r * r);
+        rd = normalize(rd + gravityForce * h_step);
+
+        p += rd * h_step;
+
+        // Disk calculations
+        float velocityDot = 0.0;
+        float dens = getGasDensity(p, velocityDot);
+
+        if (dens > 0.0001) {
+            // Relativistic Doppler and Velocity configurations
+            float beta = 0.55 / sqrt(r);
+            float gamma = 1.0 / sqrt(1.0 - beta * beta);
+            float dopplerFactor = 1.0 / (gamma * (1.0 - beta * velocityDot));
+
+            // Relativistic beaming concentration factor
+            float beaming = pow(dopplerFactor, 4.8);
+
+            // High-energy central heat profile
+            float temperature = 4.5 / (r - 1.4 * BH_RADIUS);
+
+            // Advanced physical color grading
+            vec3 baseGasColor = mix(vec3(1.4, 0.12, 0.01), vec3(0.2, 0.65, 2.5), clamp((dopplerFactor - 0.65) * 1.5, 0.0, 1.0));
+            // Add high-energy core compression highlights
+            baseGasColor = mix(baseGasColor, vec3(2.5, 2.5, 2.5), clamp((dopplerFactor - 1.15) * 2.2, 0.0, 1.0));
+
+            vec3 emission = baseGasColor * dens * temperature * beaming * 3.0;
+
+            // Volumetric Integration
+            float alpha = dens * h_step * 18.0;
+            lightAccum += emission * (1.0 - opacityAccum) * h_step;
+            opacityAccum += (1.0 - opacityAccum) * alpha;
+
+            if (opacityAccum >= 0.99) break;
         }
     }
 
-    vec3 color = hitBH ? vec3(0.0) : getRealisticBackground(rd, u_time);
-    color += diskAccum * 1.05;
+    // Compose final cosmic outputs
+    vec3 finalColor = hitBH ? vec3(0.0) : getBackground(rd) * (1.0 - opacityAccum);
+    finalColor += lightAccum;
 
-    color += 0.025 / (length(uv) + 0.028) * vec3(3.4, 1.9, 1.0);
+    // Cinematic ACES Film Tone Mapping Curve
+    finalColor = (finalColor * (2.51 * finalColor + 0.03)) / (finalColor * (2.43 * finalColor + 0.59) + 0.14);
 
-    // Filmic look
-    color = color / (color + 1.0);
-    color = pow(color, vec3(0.93));
+    // Final Gamma Conversion
+    finalColor = pow(clamp(finalColor, 0.0, 1.0), vec3(1.0 / 2.2));
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(finalColor, 1.0);
 }
